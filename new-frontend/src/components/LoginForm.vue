@@ -17,27 +17,51 @@
       <button type="submit">Log In</button>
       <p>
         Don’t have an account? <a href="/signup">Sign up here</a>.
+        <br />
+        <a href="/forgot-password">Forgot your password?</a>
       </p>
     </form>
   </template>
   
   <script>
-  export default {
-    name: "LoginForm",
-    data() {
-      return {
-        email: "",
-        password: "",
-      };
+export default {
+  name: "LoginForm",
+  data() {
+    return {
+      email: "",
+      password: "",
+    };
+  },
+  methods: {
+    async handleSubmit() {
+      try {
+        const response = await fetch("http://localhost:3000/api/auth/login", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email: this.email,
+            password: this.password,
+          }),
+        });
+        const data = await response.json();
+        if (response.ok) {
+          alert("Login successful!");
+          localStorage.setItem("token", data.token); // Save the token
+          this.$router.push("/dashboard"); // Redirect to the dashboard
+        } else {
+          alert(data.message || "Login failed!");
+        }
+      } catch (error) {
+        console.error("Login error:", error);
+        alert("An error occurred during login.");
+      }
     },
-    methods: {
-      handleSubmit() {
-        console.log("Login attempt:", { email: this.email, password: this.password });
-        // Add authentication logic here
-      },
-    },
-  };
-  </script>
+  },
+};
+</script>
+
   
   <style scoped>
   .login-form {

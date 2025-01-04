@@ -77,3 +77,62 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+html {
+  font-size: 16px; /* Base font size */
+}
+
+body {
+  font-size: 1rem; /* Scales with base font size */
+}
+
+@media (max-width: 768px) {
+  html {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  html {
+    font-size: 12px;
+  }
+}
+.league-page {
+  padding: 20px;
+  background-color: #000;
+  color: #fff;
+  min-height: 100vh;
+}
+
+@media (max-width: 768px) {
+  .league-page {
+    padding: 10px;
+  }
+
+  nav {
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+}
+
+@media (max-width: 480px) {
+  .league-page h1 {
+    font-size: 1.5rem;
+  }
+
+  nav {
+    flex-direction: column;
+  }
+}
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+@media (max-width: 480px) {
+  .footer-links {
+    flex-direction: column;
+    gap: 5px;
+  }
+}

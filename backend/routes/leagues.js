@@ -1,100 +1,122 @@
 const express = require("express");
 const dynamoDB = require("../utils/dynamoClient");
-const authenticateToken = require("../middleware/authenticateToken");
-
 const router = express.Router();
+const { authenticateToken } = require("../middleware/authenticateToken");
+
+
 const LEAGUES_TABLE = "Leagues";
 
 // Create a League
-router.post("/create", authenticateToken, async (req, res) => {
-    const { leagueName, type, franchise, maxTeams } = req.body;
-    const leagueId = `${req.user.email}-${Date.now()}`; // Generate a unique ID
-    console.log("Creating League:", { leagueName, type, franchise, maxTeams, leagueId }); // Debug log
+router.post("/create", async (req, res) => {
+  const { leagueName, leagueType, franchises } = req.body;
 
-    try {
-        const params = {
-            TableName: LEAGUES_TABLE,
-            Item: {
-                leagueId,
-                name: leagueName,
-                creatorEmail: req.user.email,
-                type,
-                franchise,
-                maxTeams,
-                participants: [req.user.email],
-                createdAt: new Date().toISOString(),
-            },
-        };
-        console.log("DynamoDB Put Params:", params); // Debug log
+  if (!leagueName || !leagueType || franchises.length === 0) {
+    return res.status(400).json({ message: "All fields are required." });
+  }
 
-        await dynamoDB.put(params).promise();
-        res.status(201).json({ message: "League created successfully", leagueId });
-    } catch (error) {
-        console.error("Create League Error:", error); // Log the full error
-        res.status(500).json({ message: "Internal server error" });
-    }
+  try {
+    const leagueId = Date.now().toString(); // Generate a unique ID
+    await dynamoDB.put({
+      TableName: "Leagues",
+      Item: { leagueId, leagueName, leagueType, franchises },
+    }).promise();
+
+    res.status(201).json({ message: "League created successfully", leagueId });
+  } catch (err) {
+    console.error("Error creating league:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
 });
 
-
-// Join a League
-router.post("/join", authenticateToken, async (req, res) => {
-    const { leagueId } = req.body;
-    console.log("League ID:", leagueId); // Log the leagueId received from the request
-
+  
+//Join a League
+  router.post("/join", authenticateToken, async (req, res) => {
+    const { inviteCode } = req.body;
+  
     try {
-        const params = {
-            TableName: LEAGUES_TABLE,
-            Key: { leagueId },
+      // Find the league with the matching invite code
+      const params = {
+        TableName: LEAGUES_TABLE,
+        FilterExpression: "inviteCode = :inviteCode",
+        ExpressionAttributeValues: { ":inviteCode": inviteCode },
+      };
+  
+      const result = await dynamoDB.scan(params).promise();
+  
+      if (!result.Items || result.Items.length === 0) {
+        return res.status(404).json({ message: "League not found with this invite code" });
+      }
+  
+      const league = result.Items[0];
+  
+      // Add the user to the participants list if not already included
+      if (!league.participants.includes(req.user.email)) {
+        league.participants.push(req.user.email);
+  
+        const updateParams = {
+          TableName: LEAGUES_TABLE,
+          Item: league,
         };
-        console.log("DynamoDB Get Params:", params); // Log the params being sent to DynamoDB
-
-        const league = await dynamoDB.get(params).promise();
-        console.log("Fetched League:", league); // Log the result from DynamoDB
-
-        if (!league.Item) {
-            console.log("League not found");
-            return res.status(404).json({ message: "League not found" });
-        }
-
-        // Add user to participants list if not already included
-        if (!league.Item.participants.includes(req.user.email)) {
-            console.log("Adding user to participants:", req.user.email);
-            league.Item.participants.push(req.user.email);
-
-            const updateParams = {
-                TableName: LEAGUES_TABLE,
-                Item: league.Item,
-            };
-            console.log("Update Params:", updateParams); // Log the updateParams before updating
-            await dynamoDB.put(updateParams).promise();
-        }
-
-        res.status(200).json({ message: "Joined league successfully", league: league.Item });
+        await dynamoDB.put(updateParams).promise();
+      }
+  
+      res.status(200).json({ message: "Joined league successfully", leagueId: league.leagueId });
     } catch (error) {
-        console.error("Join League Error:", error);
-        res.status(500).json({ message: "Internal server error" });
+      console.error("Join League Error:", error);
+      res.status(500).json({ message: "Internal server error" });
     }
-});
-
-
+  });
+  //Browse Leagues
+  router.get("/browse", authenticateToken, async (req, res) => {
+    try {
+      const params = {
+        TableName: LEAGUES_TABLE,
+        FilterExpression: "visibility = :publicVisibility",
+        ExpressionAttributeValues: { ":publicVisibility": "public" },
+      };
+  
+      const result = await dynamoDB.scan(params).promise();
+  
+      if (!result.Items || result.Items.length === 0) {
+        return res.status(404).json({ message: "No public leagues found" });
+      }
+  
+      const leagues = result.Items.map((league) => ({
+        leagueId: league.leagueId,
+        leagueName: league.leagueName,
+        franchises: league.franchises,
+        maxTeams: league.maxTeams,
+        currentTeams: league.participants.length,
+        draftDate: league.draftDate,
+      }));
+  
+      res.status(200).json(leagues);
+    } catch (error) {
+      console.error("Browse Leagues Error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
 // Get League Details
-router.get("/:leagueId", authenticateToken, async (req, res) => {
+router.get("/:leagueId", async (req, res) => {
     const { leagueId } = req.params;
 
     try {
-        const params = {
+        console.log("Fetching league with ID:", leagueId);
+        const result = await dynamoDB.get({
             TableName: LEAGUES_TABLE,
             Key: { leagueId },
-        };
+        }).promise();
 
-        const league = await dynamoDB.get(params).promise();
-        if (!league.Item) {
+        console.log("DynamoDB Response:", result);
+
+        if (!result.Item) {
             return res.status(404).json({ message: "League not found" });
         }
 
-        res.status(200).json({ league: league.Item });
-    } catch (error) {
-        console.error("Get League Details Error:", error);
+        res.status(200).json(result.Item);
+    } catch (err) {
+        console.error("Error fetching league:", err);
         res.status(500).json({ message: "Internal server error" });
     }
 });
@@ -102,35 +124,26 @@ router.get("/:leagueId", authenticateToken, async (req, res) => {
 // Edit League Details
 router.put("/:leagueId", authenticateToken, async (req, res) => {
     const { leagueId } = req.params;
-    const { leagueName, maxTeams } = req.body; // Fields to update
+    const { leagueName, maxTeams } = req.body;
 
     try {
-        const params = {
-            TableName: LEAGUES_TABLE,
-            Key: { leagueId },
-        };
-
-        // Fetch the league
+        const params = { TableName: LEAGUES_TABLE, Key: { leagueId } };
         const league = await dynamoDB.get(params).promise();
+
         if (!league.Item) {
             return res.status(404).json({ message: "League not found" });
         }
 
-        // Ensure the user is the creator of the league
         if (league.Item.creatorEmail !== req.user.email) {
             return res.status(403).json({ message: "You are not authorized to edit this league" });
         }
 
-        // Update league details
-        if (leagueName) league.Item.name = leagueName;
+        if (leagueName) league.Item.leagueName = leagueName;
         if (maxTeams) league.Item.maxTeams = maxTeams;
 
-        const updateParams = {
-            TableName: LEAGUES_TABLE,
-            Item: league.Item,
-        };
-
+        const updateParams = { TableName: LEAGUES_TABLE, Item: league.Item };
         await dynamoDB.put(updateParams).promise();
+
         res.status(200).json({ message: "League updated successfully", league: league.Item });
     } catch (error) {
         console.error("Edit League Error:", error);
@@ -143,23 +156,17 @@ router.delete("/:leagueId", authenticateToken, async (req, res) => {
     const { leagueId } = req.params;
 
     try {
-        const params = {
-            TableName: LEAGUES_TABLE,
-            Key: { leagueId },
-        };
-
-        // Fetch the league
+        const params = { TableName: LEAGUES_TABLE, Key: { leagueId } };
         const league = await dynamoDB.get(params).promise();
+
         if (!league.Item) {
             return res.status(404).json({ message: "League not found" });
         }
 
-        // Ensure the user is the creator of the league
         if (league.Item.creatorEmail !== req.user.email) {
             return res.status(403).json({ message: "You are not authorized to delete this league" });
         }
 
-        // Delete the league
         await dynamoDB.delete(params).promise();
         res.status(200).json({ message: "League deleted successfully" });
     } catch (error) {

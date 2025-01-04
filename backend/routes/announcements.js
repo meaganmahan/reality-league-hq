@@ -1,6 +1,7 @@
 const express = require("express");
 const dynamoDB = require("../utils/dynamoClient");
-const authenticateToken = require("../middleware/authenticateToken");
+const { authenticateToken } = require("../middleware/authenticateToken");
+console.log("authenticateToken:", authenticateToken);
 
 const router = express.Router(); // Initialize the router
 
@@ -10,34 +11,34 @@ router.get("/test", (req, res) => {
 });
 
 //Post an Announcement
-router.post("/post", authenticateToken, async (req, res) => {
-    const { leagueId, title, message, pinned, expiresAt } = req.body;
-    console.log("Post Announcement:", { leagueId, title, message, pinned, expiresAt });
-
+router.post("/create", authenticateToken, async (req, res) => {
     try {
-        const announcementId = `announcement-${Date.now()}`; // Generate unique ID
-        const params = {
-            TableName: "Announcements",
-            Item: {
-                leagueId,
-                announcementId, // Ensure this is included
-                title,
-                message,
-                pinned: Boolean(pinned),
-                createdBy: req.user.email,
-                createdAt: new Date().toISOString(),
-                expiresAt: expiresAt || null, // Optional expiration date
-            },
-        };
-
-        console.log("DynamoDB Put Params:", params); // Debugging
-        await dynamoDB.put(params).promise();
-        res.status(201).json({ message: "Announcement posted successfully", announcementId });
+      const { title, content } = req.body;
+  
+      if (!title || !content) {
+        return res.status(400).json({ message: "Title and content are required." });
+      }
+  
+      const announcementId = Date.now().toString();
+      const newAnnouncement = {
+        announcementId,
+        title,
+        content,
+        createdAt: new Date().toISOString(),
+      };
+  
+      await dynamoDB.put({
+        TableName: "Announcements",
+        Item: newAnnouncement,
+      }).promise();
+  
+      res.status(201).json({ message: "Announcement created successfully", announcement: newAnnouncement });
     } catch (error) {
-        console.error("Post Announcement Error:", error);
-        res.status(500).json({ message: "Internal server error" });
+      console.error("Error creating announcement:", error);
+      res.status(500).json({ message: "Internal server error" });
     }
-});
+  });
+  
 
 // View Announcements
 router.get("/:leagueId", authenticateToken, async (req, res) => {

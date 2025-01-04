@@ -1,6 +1,6 @@
 const express = require("express");
 const dynamoDB = require("../utils/dynamoClient");
-const authenticateToken = require("../middleware/authenticateToken");
+const { authenticateToken } = require("../middleware/authenticateToken");
 
 const router = express.Router();
 

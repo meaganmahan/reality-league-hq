@@ -1,6 +1,7 @@
 const express = require("express");
 const dynamoDB = require("../utils/dynamoClient");
-const authenticateToken = require("../middleware/authenticateToken");
+const { authenticateToken } = require("../middleware/authenticateToken");
+console.log("authenticateToken:", authenticateToken);
 
 const router = express.Router();
 const DRAFTS_TABLE = "Drafts";
@@ -36,6 +37,43 @@ router.post("/create", authenticateToken, async (req, res) => {
         res.status(500).json({ message: "Internal server error" });
     }
 });
+//Uodate Draft
+router.post("/update", authenticateToken, async (req, res) => {
+    const {
+      draftId,
+      leagueId,
+      maxTeams,
+      playerRepeat,
+      includeHousewives,
+      includePartners,
+      includeFriendsOf,
+      draftDate,
+    } = req.body;
+  
+    try {
+      const params = { TableName: DRAFTS_TABLE, Key: { draftId, leagueId } };
+      const draft = await dynamoDB.get(params).promise();
+  
+      if (!draft.Item) return res.status(404).json({ message: "Draft not found" });
+  
+      // Update draft settings
+      draft.Item.maxTeams = maxTeams;
+      draft.Item.rules = {
+        playerRepeat,
+        includeHousewives,
+        includePartners,
+        includeFriendsOf,
+      };
+      draft.Item.draftDate = draftDate;
+  
+      await dynamoDB.put({ TableName: DRAFTS_TABLE, Item: draft.Item }).promise();
+      res.status(200).json({ message: "Draft settings updated successfully", draft: draft.Item });
+    } catch (error) {
+      console.error("Update Draft Settings Error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
 
 // Start the Draft
 router.post("/start", authenticateToken, async (req, res) => {
@@ -167,7 +205,44 @@ router.get("/:draftId/status", authenticateToken, async (req, res) => {
     }
 });
 
-
+// Pause Draft
+router.post("/pause", authenticateToken, async (req, res) => {
+    const { draftId, leagueId } = req.body;
+    try {
+      const params = { TableName: DRAFTS_TABLE, Key: { draftId, leagueId } };
+      const draft = await dynamoDB.get(params).promise();
+  
+      if (!draft.Item) return res.status(404).json({ message: "Draft not found" });
+  
+      draft.Item.status = "Paused";
+      await dynamoDB.put({ TableName: DRAFTS_TABLE, Item: draft.Item }).promise();
+  
+      res.status(200).json({ message: "Draft paused successfully" });
+    } catch (error) {
+      console.error("Pause Draft Error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  // Resume Draft
+  router.post("/resume", authenticateToken, async (req, res) => {
+    const { draftId, leagueId } = req.body;
+    try {
+      const params = { TableName: DRAFTS_TABLE, Key: { draftId, leagueId } };
+      const draft = await dynamoDB.get(params).promise();
+  
+      if (!draft.Item) return res.status(404).json({ message: "Draft not found" });
+  
+      draft.Item.status = "In Progress";
+      await dynamoDB.put({ TableName: DRAFTS_TABLE, Item: draft.Item }).promise();
+  
+      res.status(200).json({ message: "Draft resumed successfully" });
+    } catch (error) {
+      console.error("Resume Draft Error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
 // Complete the Draft
 router.post("/complete", authenticateToken, async (req, res) => {
     const { draftId, leagueId } = req.body;
